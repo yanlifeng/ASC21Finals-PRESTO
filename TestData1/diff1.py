@@ -26,12 +26,12 @@ def listdir(path, list_name):
 #         ls2.append(it)
 # ls2.sort()
 
-
+pth = "ANS1"
 ls1 = []
 listdir("./subbands/", ls1)
 ls1.sort()
 ls2 = []
-listdir("../../ANS1/subbands/", ls2)
+listdir("../../" + pth + "/subbands/", ls2)
 ls2.sort()
 
 print(len(ls1), len(ls2))
@@ -39,18 +39,18 @@ assert (len(ls1) == len(ls2))
 ok = 1
 for i in range(len(ls1)):
     try:
-        if "_ACCEL_0.cand" in ls1[i]:
-            # print("jump this test because cand")
-            continue
-        if ".png" in ls1[i]:
-            # print("jump this test because cand")
-            continue
-        if "_ACCEL_0" in ls1[i]:
-            # print("jump this test because cand")
-            continue
-        if "txtcand" in ls1[i]:
-            # print("jump this test because cand")
-            continue
+        # if "_ACCEL_0.cand" in ls1[i]:
+        #     # print("jump this test because cand")
+        #     continue
+        # if ".png" in ls1[i]:
+        #     # print("jump this test because cand")
+        #     continue
+        # if "_ACCEL_0" in ls1[i]:
+        #     # print("jump this test because cand")
+        #     continue
+        # if "txtcand" in ls1[i]:
+        #     # print("jump this test because cand")
+        #     continue
 
         f1 = ls1[i]
         with open(f1, 'rb') as fp:
@@ -76,7 +76,7 @@ for i in range(len(ls1)):
         print("some errors occur when open ", f1, f2)
         continue
 
-f1 = "../../ANS1/DDplan.ps"
+f1 = "../../" + pth + "/DDplan.ps"
 with open(f1, 'rb') as fp:
     data = fp.read()
     data = str(data).split("\n")[10:]

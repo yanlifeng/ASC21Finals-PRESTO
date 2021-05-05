@@ -1,0 +1,3 @@
+/Users/ylf9811/Desktop/ASC20-21/prestoFinal/presto/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/Users/ylf9811/Desktop/ASC20-21/prestoFinal/presto/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/ylf9811/Desktop/ASC20-21/prestoFinal/presto/cmake-build-debug/CMakeFiles/cc.dir

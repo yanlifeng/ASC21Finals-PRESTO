@@ -1,4 +1,11 @@
 # coding=utf-8
+"""
+A simple pipelien for demostrating presto
+Weiwei Zhu
+2015-08-14
+Max-Plank Institute for Radio Astronomy
+zhuwwpku@gmail.com
+"""
 
 import os, sys, glob, re
 import presto.sifting as sifting
@@ -8,8 +15,19 @@ import time
 import random
 from operator import itemgetter, attrgetter
 
-from math import ceil
-from mpi4py import MPI
+"""
+Read Header                    === 0.003560 
+Generate Dedispersion          === 0.069920 
+Dedisperse Subbands            === 9.486754 
+fft-search subbands            === 35.692754 
+sifting candidates             === 0.117307 
+folding candidates             === 21.347670 
+
+
+real	1m7.023s
+user	1m12.424s
+sys	0m18.620s
+"""
 
 
 def dur(op=None, clock=[time.time()]):
@@ -21,34 +39,10 @@ def dur(op=None, clock=[time.time()]):
     return res
 
 
-# tasks 是每个host拿到的任务
-def go_process(tasks):
-    print("thread {} of {} host {}".format(totRank, totNum, MPI.Get_processor_name()))
-    n = len(tasks)
-    numPreProce = ceil(n / procPreHost)
-    print("numPreProce is {}".format(numPreProce))
-    l = myRank * numPreProce
-    r = min(n, (myRank + 1) * numPreProce)
-    print("l,r is {} {}".format(l, r))
-    res = []
-    newTasks = tasks[l:r]
-    # print("new tasks:")
-    # print(new_tasks)
-    for ls in newTasks:
-        logs = []
-        for it in ls:
-            print(add_info + it)
-            output = getoutput(it)
-            logs.append(output)
-        res.append(logs)
-    return res
-
-
 # Tutorial_Mode = True
 Tutorial_Mode = False
 
 timeLog = ''
-# load automatic
 
 rootname = 'Sband'
 maxDM = 80  # max DM to search
@@ -56,19 +50,6 @@ Nsub = 32  # 32 subbands
 Nint = 64  # 64 sub integration
 Tres = 0.5  # ms
 zmax = 0
-
-hostNum = 2
-
-comm = MPI.COMM_WORLD
-totNum = comm.Get_size()
-totRank = comm.Get_rank()
-assert (totNum % hostNum == 0)
-procPreHost = totNum // hostNum
-hostRank = totRank // procPreHost
-myRank = totRank % procPreHost
-print("tot process ", totNum, "tot host ", hostNum, "now is process ", totRank, "on host ", hostRank, ", host rank is ",
-      myRank)
-add_info = "rank " + str(totRank) + " : "
 
 filename = sys.argv[1]
 if len(sys.argv) > 2:
@@ -87,21 +68,23 @@ def query(question, answer, input_type):
 
 
 # """
-if (totRank == 0):
-    print('''
-    
-    ====================Read Header======================
-    
-    ''')
-comm.Barrier()
-print(add_info + "padd barr0")
 
+print('''
+
+====================Read Header======================
+
+''')
+# read some canshu from filename
+# 算了 中文注释吧
+# 读取文件的信息 一些参数
 dur()
-tasks = []
+# try:
+# myfil = filterbank(filename)
+
 readheadercmd = 'readfile %s' % filename
-print(add_info + "readheadercmd : \n" + readheadercmd)
+print("readheadercmd : \n" + readheadercmd)
 output = getoutput(readheadercmd)
-print(add_info + "output : \n" + output)
+print("output : \n" + output)
 header = {}
 size = 0
 for line in output.split('\n'):
@@ -114,15 +97,12 @@ for line in output.split('\n'):
 # print 'failed at reading file %s.' % filename
 # sys.exit(0)
 timeLog += dur("Read Header")
-if (totRank == 0):
-    print('''
-    
-    ============Generate Dedispersion===============
-    
-    ''')
-comm.Barrier()
-print(add_info + "padd barr1")
 
+print('''
+
+============Generate Dedispersion===============
+
+''')
 dur()
 try:
     Nchan = int(header['Number of channels'])
@@ -141,9 +121,9 @@ try:
     # 利用读取出来的参数 运行DDplan.py 然后收集到输出中的最后一行参数
     ddplancmd = 'DDplan.py -d %(maxDM)s -n %(Nchan)d -b %(BandWidth)s -t %(tsamp)f -f %(fcenter)f -s %(Nsub)s -o DDplan.ps' % {
         'maxDM': maxDM, 'Nchan': Nchan, 'tsamp': tsamp, 'BandWidth': BandWidth, 'fcenter': fcenter, 'Nsub': Nsub}
-    print(add_info + ddplancmd)
+    print(ddplancmd)
     ddplanout = getoutput(ddplancmd)
-    print(add_info + ddplanout)
+    print(ddplanout)
     planlist = ddplanout.split('\n')
     ddplan = []
     planlist.reverse()
@@ -155,6 +135,9 @@ try:
         else:
             ddplan.append(plan)
     ddplan.reverse()
+    # ddplan is ['    0.000     84.000    0.50       1   12.00     168      24       7    1']
+    # print "ddplan : \n"
+    # print ddplan
 except:
     print('failed at generating DDplan.')
     sys.exit(0)
@@ -168,26 +151,19 @@ if Tutorial_Mode:
     print('see how these numbers are used in the next step.')
     print('')
 timeLog += dur("Generate Dedispersion")
-if (totRank == 0):
-    print('''
-    
-    ================Dedisperse Subbands==================
-    
-    ''')
-comm.Barrier()
-print(add_info + "padd barr2")
 
+print('''
+
+================Dedisperse Subbands==================
+
+''')
 dur()
 cwd = os.getcwd()
 try:
-    if myRank == 0:
-        if not os.access('subbands', os.F_OK):
-            os.mkdir('subbands')
-    comm.Barrier()
-    print(add_info + "padd barr2.5")
+    if not os.access('subbands', os.F_OK):
+        os.mkdir('subbands')
     os.chdir('subbands')
-    if myRank == 0:
-        logfile = open('dedisperse.log', 'wt')
+    logfile = open('dedisperse.log', 'wt')
     ddplanSize = 0
     # 对于DDplan的输出信息们（其实就一行） 生成一个lowDM-highDM 间隔为dDm的数组 分成calls份
     # 然后每一份 运行prepsubband 先写一些信息到临时文件里 然后读出来 把有用的信息写到Sband_DMxx.xx里面
@@ -197,15 +173,12 @@ try:
         # print ddplanSize
         ddplanSize += 1
         ddpl = line.split()
-        print("ddpl")
-        print(ddpl)
-        # ['0.000', '84.000', '0.50', '1', '12.00', '168', '24', '7', '1']
         lowDM = float(ddpl[0])
         hiDM = float(ddpl[1])
-        dDM = float(ddpl[2])  # 0.5
-        DownSamp = int(ddpl[3])  # 1
-        NDMs = int(ddpl[6])  # 24 --->
-        calls = int(ddpl[7])  # 7
+        dDM = float(ddpl[2])
+        DownSamp = int(ddpl[3])
+        NDMs = int(ddpl[6])
+        calls = int(ddpl[7])
         Nout = Nsamp / DownSamp
         Nout -= (Nout % 500)
         dmlist = np.split(np.arange(lowDM, hiDM, dDM), calls)
@@ -216,10 +189,11 @@ try:
         datdownsamp = 2
         if DownSamp < 2: subdownsamp = datdownsamp = 1
 
-        print(add_info + "p1 size ", len(dmlist))
-        tasks.clear()
+        # random.shuffle(dmlist)
+        # TODO 这里cpu跑起来只显示用了一个核的10%左右 应该是时间都在频繁的读写文件上 下一步可以找到prepsubband的源代码改一下（现在还没找到）
+        # TODO mutithread test
+        # TODO 这里的运行结果里面有个error
         for i, dml in enumerate(dmlist):
-            ls_task = []
             lodm = dml[0]
             subDM = np.mean(dml)
             if maskfile:
@@ -229,10 +203,9 @@ try:
             else:
                 prepsubband = "prepsubband -sub -subdm %.2f -nsub %d -downsamp %d -o %s %s" % (
                     subDM, Nsub, subdownsamp, rootname, '../' + filename)
-            # print("prepsubband : " + prepsubband)
-            ls_task.append(prepsubband)
-            # output = getoutput(prepsubband)
-            # logfile.write(output)
+            print("prepsubband : " + prepsubband)
+            output = getoutput(prepsubband)
+            logfile.write(output)
             # print output
             # print "========================================================================"
             subnames = rootname + "_DM%.2f.sub[0-9]*" % subDM
@@ -241,30 +214,13 @@ try:
             prepsubcmd = "prepsubband -nsub %(Nsub)d -lodm %(lowdm)f -dmstep %(dDM)f -numdms %(NDMs)d -numout %(Nout)d -downsamp %(DownSamp)d -o %(root)s %(subfile)s" % {
                 'Nsub': Nsub, 'lowdm': lodm, 'dDM': dDM, 'NDMs': NDMs, 'Nout': Nout, 'DownSamp': datdownsamp,
                 'root': rootname, 'subfile': subnames}
-            # print("prepsubcmd : " + prepsubcmd)
-            ls_task.append(prepsubcmd)
-            # output = getoutput(prepsubcmd)
-            # logfile.write(output)
+            print("prepsubcmd : " + prepsubcmd)
+            output = getoutput(prepsubcmd)
+            logfile.write(output)
             # print output
             # print "========================================================================"
-            tasks.append(ls_task)
-    print("ready to go_process")
-
-    n = len(tasks)
-
-    numPreHost = ceil(n / hostNum)
-    L = hostRank * numPreHost
-    R = min(n, (hostRank + 1) * numPreHost)
-    print("L,R is {} {}".format(L, R))
-    res = go_process(tasks[L:R])
-    if myRank == 0:
-        for ls in res:
-            for it in ls:
-                logfile.write(it)
-    if myRank == 0:
-        os.system('rm *.sub*')
-    if myRank == 0:
-        logfile.close()
+    os.system('rm *.sub*')
+    logfile.close()
     os.chdir(cwd)
 
 except:
@@ -273,60 +229,30 @@ except:
     sys.exit(0)
 timeLog += dur("Dedisperse Subbands")
 
-# exit(0)
-if (totRank == 0):
-    print('''
-    
-    ================fft-search subbands==================
-    
-    ''')
-comm.Barrier()
-print(add_info + "padd barr3")
+print('''
 
+================fft-search subbands==================
+
+''')
 dur()
 try:
     os.chdir('subbands')
     datfiles = glob.glob("*.dat")
-    if myRank == 0:
-        logfile = open('fft.log', 'wt')
-    print(add_info + "p2 size ", len(datfiles))
-    tasks.clear()
+    logfile = open('fft.log', 'wt')
     for df in datfiles:
         fftcmd = "realfft %s" % df
-        ls_task = []
-        ls_task.append(fftcmd)
-        tasks.append(ls_task)
-        # print(fftcmd)
-        # output = getoutput(fftcmd)
-        # logfile.write(output)
-    res = go_process(tasks)
-    if myRank == 0:
-        for ls in res:
-            for it in ls:
-                logfile.write(it)
-    if myRank == 0:
-        logfile.close()
-    comm.Barrier()
-    if myRank == 0:
-        logfile = open('accelsearch.log', 'wt')
+        print(fftcmd)
+        output = getoutput(fftcmd)
+        logfile.write(output)
+    logfile.close()
+    logfile = open('accelsearch.log', 'wt')
     fftfiles = glob.glob("*.fft")
-    print(add_info + "p3 size ", len(fftfiles))
-    tasks.clear()
     for fftf in fftfiles:
         searchcmd = "accelsearch -zmax %d %s" % (zmax, fftf)
-        ls_task = []
-        ls_task.append(searchcmd)
-        tasks.append(ls_task)
-        # print(searchcmd)
-        # output = getoutput(searchcmd)
-        # logfile.write(output)
-    res = go_process(tasks)
-    if myRank == 0:
-        for ls in res:
-            for it in ls:
-                logfile.write(it)
-    if myRank == 0:
-        logfile.close()
+        print(searchcmd)
+        output = getoutput(searchcmd)
+        logfile.write(output)
+    logfile.close()
     os.chdir(cwd)
 except:
     print('failed at fft search.')
@@ -383,159 +309,90 @@ def ACCEL_sift(zmax):
     # them should be there.  (if no candidates are found by accelsearch
     # we get no ACCEL files...
     inffiles = glob.glob(globinf)
-    # print("inffiles")
-    # print(inffiles)
     candfiles = glob.glob(globaccel)
-    # print("candfiles")
-    # print(candfiles)
     # Check to see if this is from a short search
     if len(re.findall("_[0-9][0-9][0-9]M_", inffiles[0])):
         dmstrs = [x.split("DM")[-1].split("_")[0] for x in candfiles]
     else:
         dmstrs = [x.split("DM")[-1].split(".inf")[0] for x in inffiles]
-    # print("dmstrs")
-    # print(dmstrs)
     dms = list(map(float, dmstrs))
-    # print("dms")
-    # print(dms)
     dms.sort()
     dmstrs = ["%.2f" % x for x in dms]
+    print("dmstrs")
+    print(dmstrs)
+
+    # candfiles.sort()
+    # Read in all the candidates
     cands = sifting.read_candidates(candfiles)
-    if myRank != 0:
-        dmstrs = []
-        cands.cands = []
-    print("totRank", totRank)
-    totListCands = comm.gather(cands.cands, root=0)
-    comm.Barrier()
-    print("totRank", totRank)
+    print("cands")
+    for it in cands:
+        print("it.DM {}, it.p {}, it.DMstr {}".format(it.DM, it.p, it.DMstr))
 
-    totDmstrs = comm.gather(dmstrs, root=0)
-    comm.Barrier()
-    print("totRank", totRank)
+    # Remove candidates that are duplicated in other ACCEL files
+    if len(cands):
+        cands = sifting.remove_duplicate_candidates(cands)
 
-    cands = []
-    dmstrs = []
-    if totRank == 0:
+    # Remove candidates with DM problems
+    if len(cands):
+        cands = sifting.remove_DM_problems(cands, min_num_DMs, dmstrs, low_DM_cutoff)
 
-        for itt in totListCands:
-            for it in itt:
-                cands.append(it)
+    # Remove candidates that are harmonically related to each other
+    # Note:  this includes only a small set of harmonics
+    if len(cands):
+        cands = sifting.remove_harmonics(cands)
 
-        for itt in totDmstrs:
-            for it in itt:
-                dmstrs.append(it)
-
-        cands = sifting.Candlist(cands)
-        # Remove candidates that are duplicated in other ACCEL files
-        if len(cands):
-            cands = sifting.remove_duplicate_candidates(cands)
-
-        # for it in cands:
-        #     print("cand hits")
-        #     print(it.hits)
-        # Remove candidates with DM problems
-        if len(cands):
-            cands = sifting.remove_DM_problems(cands, min_num_DMs, dmstrs, low_DM_cutoff)
-
-        # Remove candidates that are harmonically related to each other
-        # Note:  this includes only a small set of harmonics
-        if len(cands):
-            cands = sifting.remove_harmonics(cands)
-
-        # Write candidates to STDOUT
-        if len(cands):
-            cands.sort(key=attrgetter('sigma'), reverse=True)
-            # cands.sort(sifting.cmp_sigma)
-            # for cand in cands[:1]:
-            # print cand.filename, cand.candnum, cand.p, cand.DMstr
-            # sifting.write_candlist(cands)
+    # Write candidates to STDOUT
+    if len(cands):
+        cands.sort(key=attrgetter('sigma'), reverse=True)
+        # cands.sort(sifting.cmp_sigma)
+        # for cand in cands[:1]:
+        # print cand.filename, cand.candnum, cand.p, cand.DMstr
+        # sifting.write_candlist(cands)
+    print("cands 2")
+    for it in cands:
+        print("it.DM {}, it.p {}, it.DMstr {}".format(it.DM, it.p, it.DMstr))
     return cands
 
 
-# exit(0)
-if totRank == 0:
-    print('''
-    
-    ================sifting candidates==================
-    
-    ''')
-comm.Barrier()
-print(add_info + "barr sifting")
+print('''
+
+================sifting candidates==================
+
+''')
 dur()
-try:
-    # if myRank == 0:
-    cwd = os.getcwd()
-    os.chdir('subbands')
-    cands = ACCEL_sift(zmax)
-    os.chdir(cwd)
-except:
-    print('failed at sifting candidates.')
-    os.chdir(cwd)
-    sys.exit(0)
+# try:
+cwd = os.getcwd()
+os.chdir('subbands')
+cands = ACCEL_sift(zmax)
+os.chdir(cwd)
+# except:
+# print 'failed at sifting candidates.'
+# os.chdir(cwd)
+# sys.exit(0)
 
 timeLog += dur("sifting candidates")
+print('''
 
-if totRank == 0:
-    print('''
-    
-    ================folding candidates==================
-    
-    ''')
-comm.Barrier()
-print(add_info + "barr folding")
+================folding candidates==================
 
-print(add_info)
-print("=======================cands 0==================================")
-for it in cands:
-    print("it.DM {}, it.p {}, it.DMstr {}".format(it.DM, it.p, it.DMstr))
-print("=======================cands 0==================================")
-
-tasksCands = []
-if totRank == 0:
-    n = len(cands)
-    preCandsPreProce = ceil(n / totNum)
-    for i in range(totNum):
-        l = i * preCandsPreProce
-        r = min(n, (i + 1) * preCandsPreProce)
-        tasksCands.append(cands[l:r])
-cands = comm.scatter(tasksCands, root=0)
-comm.Barrier()
-
-print(add_info)
-print("=======================cands 1==================================")
-for it in cands:
-    print("it.DM {}, it.p {}, it.DMstr {}".format(it.DM, it.p, it.DMstr))
-print("=======================cands 1==================================")
-# exit(0)
+''')
 dur()
 try:
     cwd = os.getcwd()
     os.chdir('subbands')
     os.system('ln -s ../%s %s' % (filename, filename))
-    if myRank == 0:
-        logfile = open('folding.log', 'wt')
-    print(add_info + "p4 size is ", len(cands))
-    tasks.clear()
+    logfile = open('folding.log', 'wt')
     for cand in cands:
-        ls_task = []
         # foldcmd = "prepfold -dm %(dm)f -accelcand %(candnum)d -accelfile %(accelfile)s %(datfile)s -noxwin " % {
         # 'dm':cand.DM,  'accelfile':cand.filename+'.cand', 'candnum':cand.candnum, 'datfile':('%s_DM%s.dat' % (rootname, cand.DMstr))} #simple plots
         foldcmd = "prepfold -n %(Nint)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f %(filfile)s -o %(outfile)s -noxwin -nodmsearch" % {
             'Nint': Nint, 'Nsub': Nsub, 'dm': cand.DM, 'period': cand.p, 'filfile': filename,
             'outfile': rootname + '_DM' + cand.DMstr}  # full plots
-        ls_task.append(foldcmd)
-        tasks.append(ls_task)
         print(foldcmd)
         # os.system(foldcmd)
         output = getoutput(foldcmd)
-        # logfile.write(output)
-    # res = go_process(tasks)
-    # if myRank == 0:
-    #     for ls in res:
-    #         for it in ls:
-    #             logfile.write(it)
-    if myRank == 0:
-        logfile.close()
+        logfile.write(output)
+    logfile.close()
     os.chdir(cwd)
 except:
     print('failed at folding candidates.')
@@ -543,4 +400,4 @@ except:
     sys.exit(0)
 timeLog += dur("folding candidates")
 
-print(add_info + timeLog)
+print(timeLog)
