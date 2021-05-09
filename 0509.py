@@ -23,10 +23,13 @@ def dur(op=None, clock=[time.time()]):
 
 # tasks 是每个host拿到的任务
 def go_process(tasks):
+    print("thread {} of {} host {}".format(totRank, totNum, MPI.Get_processor_name()))
     n = len(tasks)
     numPreProce = ceil(n / procPreHost)
+    print("numPreProce is {}".format(numPreProce))
     l = myRank * numPreProce
     r = min(n, (myRank + 1) * numPreProce)
+    print("l,r is {} {}".format(l, r))
     res = []
     newTasks = tasks[l:r]
     # print("new tasks:")
@@ -34,7 +37,7 @@ def go_process(tasks):
     for ls in newTasks:
         logs = []
         for it in ls:
-            # print(add_info + it)
+            print(add_info + it)
             output = getoutput(it)
             logs.append(output)
         res.append(logs)
@@ -63,6 +66,9 @@ assert (totNum % hostNum == 0)
 procPreHost = totNum // hostNum
 hostRank = totRank // procPreHost
 myRank = totRank % procPreHost
+print("tot process ", totNum, "tot host ", hostNum, "now is process ", totRank, "on host ", hostRank, ", host rank is ",
+      myRank)
+add_info = "rank " + str(totRank) + " : "
 
 filename = sys.argv[1]
 if len(sys.argv) > 2:
@@ -89,14 +95,16 @@ if (totRank == 0):
     ''')
 comm.Barrier()
 
+if (totRank == 0):
+    print(add_info + "padd barr0")
+
 dur()
 tasks = []
 readheadercmd = 'readfile %s' % filename
 if (totRank == 0):
-    print(readheadercmd)
-output = getoutput(readheadercmd)
-if (totRank == 0):
-    print(output)
+    print(add_info + "readheadercmd : \n" + readheadercmd)
+    output = getoutput(readheadercmd)
+    print(add_info + "output : \n" + output)
 header = {}
 size = 0
 for line in output.split('\n'):
@@ -116,6 +124,8 @@ if (totRank == 0):
     
     ''')
 comm.Barrier()
+if (totRank == 0):
+    print(add_info + "padd barr1")
 
 dur()
 try:
@@ -136,10 +146,10 @@ try:
     ddplancmd = 'DDplan.py -d %(maxDM)s -n %(Nchan)d -b %(BandWidth)s -t %(tsamp)f -f %(fcenter)f -s %(Nsub)s -o DDplan.ps' % {
         'maxDM': maxDM, 'Nchan': Nchan, 'tsamp': tsamp, 'BandWidth': BandWidth, 'fcenter': fcenter, 'Nsub': Nsub}
     if (totRank == 0):
-        print(ddplancmd)
+        print(add_info + ddplancmd)
     ddplanout = getoutput(ddplancmd)
     if (totRank == 0):
-        print(ddplanout)
+        print(add_info + ddplanout)
     planlist = ddplanout.split('\n')
     ddplan = []
     planlist.reverse()
@@ -171,6 +181,9 @@ if (totRank == 0):
     
     ''')
 comm.Barrier()
+if (totRank == 0):
+    print(add_info + "padd barr2")
+
 dur()
 cwd = os.getcwd()
 try:
@@ -178,8 +191,10 @@ try:
         if not os.access('subbands', os.F_OK):
             os.mkdir('subbands')
     comm.Barrier()
+    if (totRank == 0):
+        print(add_info + "padd barr2.5")
     os.chdir('subbands')
-    if totRank == 0:
+    if myRank == 0:
         logfile = open('dedisperse.log', 'wt')
     ddplanSize = 0
     for line in ddplan:
@@ -201,6 +216,8 @@ try:
         subdownsamp = DownSamp / 2
         datdownsamp = 2
         if DownSamp < 2: subdownsamp = datdownsamp = 1
+        if (totRank == 0):
+            print(add_info + "p1 size ", len(dmlist))
         tasks.clear()
         for i, dml in enumerate(dmlist):
             ls_task = []
@@ -236,16 +253,14 @@ try:
     numPreHost = ceil(n / hostNum)
     L = hostRank * numPreHost
     R = min(n, (hostRank + 1) * numPreHost)
-    depRes = go_process(tasks[L:R])
+    res = go_process(tasks[L:R])
+    if myRank == 0:
+        for ls in res:
+            for it in ls:
+                logfile.write(it)
     if myRank == 0:
         os.system('rm *.sub*')
-    totDepRes = comm.gather(depRes, root=0)
-    comm.Barrier()
-    if totRank == 0:
-        for ls in totDepRes:
-            for it in ls:
-                for item in it:
-                    logfile.write(item)
+    if myRank == 0:
         logfile.close()
     os.chdir(cwd)
 
@@ -263,52 +278,51 @@ if (totRank == 0):
     
     ''')
 comm.Barrier()
+print(add_info + "padd barr3")
 
 dur()
 try:
     os.chdir('subbands')
     datfiles = glob.glob("*.dat")
-    if totRank == 0:
+    if myRank == 0:
         logfile = open('fft.log', 'wt')
+    print(add_info + "p2 size ", len(datfiles))
     tasks.clear()
     for df in datfiles:
         fftcmd = "realfft %s" % df
         ls_task = []
         ls_task.append(fftcmd)
         tasks.append(ls_task)
-        print(fftcmd)
+        # print(fftcmd)
         # output = getoutput(fftcmd)
         # logfile.write(output)
-    fftRes = go_process(tasks)
-    totFftRes = comm.gather(fftRes, root=0)
-    comm.Barrier()
-    if totRank == 0:
-        for ls in totFftRes:
+    res = go_process(tasks)
+    if myRank == 0:
+        for ls in res:
             for it in ls:
-                for item in it:
-                    logfile.write(item)
+                logfile.write(it)
+    if myRank == 0:
         logfile.close()
     comm.Barrier()
-    if totRank == 0:
+    if myRank == 0:
         logfile = open('accelsearch.log', 'wt')
     fftfiles = glob.glob("*.fft")
+    print(add_info + "p3 size ", len(fftfiles))
     tasks.clear()
     for fftf in fftfiles:
         searchcmd = "accelsearch -zmax %d %s" % (zmax, fftf)
         ls_task = []
         ls_task.append(searchcmd)
         tasks.append(ls_task)
-        print(searchcmd)
+        # print(searchcmd)
         # output = getoutput(searchcmd)
         # logfile.write(output)
-    accRes = go_process(tasks)
-    totAccRes = comm.gather(accRes, root=0)
-    comm.Barrier()
-    if totRank == 0:
-        for ls in totAccRes:
+    res = go_process(tasks)
+    if myRank == 0:
+        for ls in res:
             for it in ls:
-                for item in it:
-                    logfile.write(item)
+                logfile.write(it)
+    if myRank == 0:
         logfile.close()
     os.chdir(cwd)
 except:
@@ -327,75 +341,76 @@ def ACCEL_sift(zmax):
     The following code come from PRESTO's ACCEL_sift.py
     '''
 
-    p1 = []
-    p2 = []
-    if myRank == 0:
-        globaccel = "*ACCEL_%d" % zmax
-        globinf = "*DM*.inf"
-        # In how many DMs must a candidate be detected to be considered "good"
-        min_num_DMs = 2
-        # Lowest DM to consider as a "real" pulsar
-        low_DM_cutoff = 2.0
-        # Ignore candidates with a sigma (from incoherent power summation) less than this
-        sifting.sigma_threshold = 4.0
-        # Ignore candidates with a coherent power less than this
-        sifting.c_pow_threshold = 100.0
+    globaccel = "*ACCEL_%d" % zmax
+    globinf = "*DM*.inf"
+    # In how many DMs must a candidate be detected to be considered "good"
+    min_num_DMs = 2
+    # Lowest DM to consider as a "real" pulsar
+    low_DM_cutoff = 2.0
+    # Ignore candidates with a sigma (from incoherent power summation) less than this
+    sifting.sigma_threshold = 4.0
+    # Ignore candidates with a coherent power less than this
+    sifting.c_pow_threshold = 100.0
 
-        # If the birds file works well, the following shouldn't
-        # be needed at all...  If they are, add tuples with the bad
-        # values and their errors.
-        #                (ms, err)
-        sifting.known_birds_p = []
-        #                (Hz, err)
-        sifting.known_birds_f = []
+    # If the birds file works well, the following shouldn't
+    # be needed at all...  If they are, add tuples with the bad
+    # values and their errors.
+    #                (ms, err)
+    sifting.known_birds_p = []
+    #                (Hz, err)
+    sifting.known_birds_f = []
 
-        # The following are all defined in the sifting module.
-        # But if we want to override them, uncomment and do it here.
-        # You shouldn't need to adjust them for most searches, though.
+    # The following are all defined in the sifting module.
+    # But if we want to override them, uncomment and do it here.
+    # You shouldn't need to adjust them for most searches, though.
 
-        # How close a candidate has to be to another candidate to
-        # consider it the same candidate (in Fourier bins)
-        sifting.r_err = 1.1
-        # Shortest period candidates to consider (s)
-        sifting.short_period = 0.0005
-        # Longest period candidates to consider (s)
-        sifting.long_period = 15.0
-        # Ignore any candidates where at least one harmonic does exceed this power
-        sifting.harm_pow_cutoff = 8.0
+    # How close a candidate has to be to another candidate to
+    # consider it the same candidate (in Fourier bins)
+    sifting.r_err = 1.1
+    # Shortest period candidates to consider (s)
+    sifting.short_period = 0.0005
+    # Longest period candidates to consider (s)
+    sifting.long_period = 15.0
+    # Ignore any candidates where at least one harmonic does exceed this power
+    sifting.harm_pow_cutoff = 8.0
 
-        # --------------------------------------------------------------
+    # --------------------------------------------------------------
 
-        # Try to read the .inf files first, as _if_ they are present, all of
-        # them should be there.  (if no candidates are found by accelsearch
-        # we get no ACCEL files...
-        inffiles = glob.glob(globinf)
-        inffiles.sort()
-        # print("inffiles")
-        # print(inffiles)
-        candfiles = glob.glob(globaccel)
-        candfiles.sort()
-        # print("candfiles")
-        # print(candfiles)
-        # Check to see if this is from a short search
-        if len(re.findall("_[0-9][0-9][0-9]M_", inffiles[0])):
-            dmstrs = [x.split("DM")[-1].split("_")[0] for x in candfiles]
-        else:
-            dmstrs = [x.split("DM")[-1].split(".inf")[0] for x in inffiles]
-        # print("dmstrs")
-        # print(dmstrs)
-        dms = list(map(float, dmstrs))
-        # print("dms")
-        # print(dms)
-        dms.sort()
-        dmstrs = ["%.2f" % x for x in dms]
-        cands = sifting.read_candidates(candfiles)
-        p1 = dmstrs
-        p2 = cands.cands
-    totListCands = comm.gather(p2, root=0)
-    # comm.Barrier()
-
-    totDmstrs = comm.gather(p1, root=0)
+    # Try to read the .inf files first, as _if_ they are present, all of
+    # them should be there.  (if no candidates are found by accelsearch
+    # we get no ACCEL files...
+    inffiles = glob.glob(globinf)
+    inffiles.sort()
+    # print("inffiles")
+    # print(inffiles)
+    candfiles = glob.glob(globaccel)
+    candfiles.sort()
+    # print("candfiles")
+    # print(candfiles)
+    # Check to see if this is from a short search
+    if len(re.findall("_[0-9][0-9][0-9]M_", inffiles[0])):
+        dmstrs = [x.split("DM")[-1].split("_")[0] for x in candfiles]
+    else:
+        dmstrs = [x.split("DM")[-1].split(".inf")[0] for x in inffiles]
+    # print("dmstrs")
+    # print(dmstrs)
+    dms = list(map(float, dmstrs))
+    # print("dms")
+    # print(dms)
+    dms.sort()
+    dmstrs = ["%.2f" % x for x in dms]
+    cands = sifting.read_candidates(candfiles)
+    if myRank != 0:
+        dmstrs = []
+        cands.cands = []
+    print("totRank", totRank)
+    totListCands = comm.gather(cands.cands, root=0)
     comm.Barrier()
+    print("totRank", totRank)
+
+    totDmstrs = comm.gather(dmstrs, root=0)
+    comm.Barrier()
+    print("totRank", totRank)
 
     cands = []
     dmstrs = []
@@ -444,6 +459,7 @@ if totRank == 0:
     
     ''')
 comm.Barrier()
+print(add_info + "barr sifting")
 dur()
 try:
     # if myRank == 0:
@@ -465,6 +481,14 @@ if totRank == 0:
     
     ''')
 comm.Barrier()
+print(add_info + "barr folding")
+
+print(add_info)
+print("=======================cands 0==================================")
+for it in cands:
+    print("it.DM {}, it.p {}, it.DMstr {}".format(it.DM, it.p, it.DMstr))
+print("=======================cands 0==================================")
+
 tasksCands = []
 if totRank == 0:
     n = len(cands)
@@ -475,31 +499,41 @@ if totRank == 0:
         tasksCands.append(cands[l:r])
 cands = comm.scatter(tasksCands, root=0)
 comm.Barrier()
+
+print(add_info)
+print("=======================cands 1==================================")
+for it in cands:
+    print("it.DM {}, it.p {}, it.DMstr {}".format(it.DM, it.p, it.DMstr))
+print("=======================cands 1==================================")
+# exit(0)
 dur()
 try:
     cwd = os.getcwd()
     os.chdir('subbands')
     os.system('ln -s ../%s %s' % (filename, filename))
-    if totRank == 0:
+    if myRank == 0:
         logfile = open('folding.log', 'wt')
-    fldRes = []
+    print(add_info + "p4 size is ", len(cands))
+    tasks.clear()
     for cand in cands:
+        ls_task = []
         # foldcmd = "prepfold -dm %(dm)f -accelcand %(candnum)d -accelfile %(accelfile)s %(datfile)s -noxwin " % {
         # 'dm':cand.DM,  'accelfile':cand.filename+'.cand', 'candnum':cand.candnum, 'datfile':('%s_DM%s.dat' % (rootname, cand.DMstr))} #simple plots
         foldcmd = "prepfold -n %(Nint)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f %(filfile)s -o %(outfile)s -noxwin -nodmsearch" % {
             'Nint': Nint, 'Nsub': Nsub, 'dm': cand.DM, 'period': cand.p, 'filfile': filename,
             'outfile': rootname + '_DM' + cand.DMstr}  # full plots
+        ls_task.append(foldcmd)
+        tasks.append(ls_task)
         print(foldcmd)
         # os.system(foldcmd)
         output = getoutput(foldcmd)
-        fldRes.append(output)
         # logfile.write(output)
-    totFolRes = comm.gather(fldRes, root=0)
-    comm.Barrier()
-    if totRank == 0:
-        for ls in totFolRes:
-            for it in ls:
-                logfile.write(it)
+    # res = go_process(tasks)
+    # if myRank == 0:
+    #     for ls in res:
+    #         for it in ls:
+    #             logfile.write(it)
+    if myRank == 0:
         logfile.close()
     os.chdir(cwd)
 except:
@@ -507,5 +541,5 @@ except:
     os.chdir(cwd)
     sys.exit(0)
 timeLog += dur("folding candidates")
-if totRank == 0:
-    print(timeLog)
+
+print(add_info + timeLog)

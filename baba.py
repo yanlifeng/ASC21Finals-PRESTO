@@ -31,7 +31,7 @@ ls1 = []
 listdir("./subbands/", ls1)
 ls1.sort()
 ls2 = []
-listdir("../../ANS1/subbands/", ls2)
+listdir("../subbands/", ls2)
 ls2.sort()
 
 print(len(ls1), len(ls2))
@@ -40,8 +40,8 @@ ok = 1
 for i in range(len(ls1)):
     try:
         # if "_ACCEL_0.cand" in ls1[i]:
-            # print("jump this test because cand")
-            # continue
+        # print("jump this test because cand")
+        # continue
         if ".png" in ls1[i]:
             # print("jump this test because cand")
             continue
@@ -70,30 +70,8 @@ for i in range(len(ls1)):
         if m1 != m2:
             print("GG on check ", f1, f2)
             ok = 0
-        else:
-            print("pass on test ", f1)
+        # else:
+        #     print("pass on test ", f1)
     except:
         print("some errors occur when open ", f1, f2)
         continue
-
-f1 = "../../ANS1/DDplan.ps"
-with open(f1, 'rb') as fp:
-    data = fp.read()
-    data = str(data).split("\n")[10:]
-    data = bytes(data)
-m1 = hashlib.md5(data).hexdigest()
-f2 = "./DDplan.ps"
-with open(f2, 'rb') as fp:
-    data = fp.read()
-    data = str(data).split("\n")[10:]
-    data = bytes(data)
-m2 = hashlib.md5(data).hexdigest()
-if m1 != m2:
-    print("GG on file " + f2)
-    ok = 0
-else:
-    print("pass on test DD")
-if ok:
-    print("Accepted !")
-else:
-    print("GG !")

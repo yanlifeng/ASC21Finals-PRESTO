@@ -151,7 +151,7 @@ class Candidate(object):
         self.numharm = numharm
         self.ipow_det = ipow
         self.cpow = cpow
-        self.r = bin
+        self.r = binx
         self.f = bin/T
         self.z = z
         self.T = T
@@ -736,6 +736,8 @@ class Candlist(object):
                 while jj < self.get_numcands() and \
                         np.fabs(self.cands[ii].r-self.cands[jj].r) < r_err:
                     jj += 1
+
+                # ii == jj
                 matches = self.cands[ii:jj]
                 matches.sort(key=attrgetter('sigma'), reverse=True)
                 bestindex = self.cands.index(matches[0])
